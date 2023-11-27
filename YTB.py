@@ -16,7 +16,8 @@ voters = []
 global alreadyRan
 voice_client = None
 
-API_KEY = "AIzaSyBb3zmkJxq4wQBXry3R68Mn-f83_Uh6W_E"
+# This is your youtube api key for creating embeds, pretty big implemenentation of the bot but could be rewritten to not use it
+API_KEY = "API_KEY_HERE"
 
 async def music(interaction, query):
     global voice_client
@@ -316,5 +317,5 @@ async def queue(interaction: discord.Interaction, option: str,suboption: str = "
 
 
 
-
-bot.run("MTE0MjUyOTI4MDA0ODM4MjA2NA.GpAcSY.aHU5CsoKib0JBOq4PInVWqLGWsCjrRpEaF1kXU")
+# Replace BOT_TOKEN with your bot token you get from https://discord.com/developers
+bot.run("BOT_TOKEN")
