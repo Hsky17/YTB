@@ -5,7 +5,6 @@ Simple yet feature rich youtube bot implementation for discord
 This was made just for fun and for learning discord.py, code is unoptimized and unorganized at the moment as it was AI assisted and left as functional. Optimizations and fixes will come in the future but will only be pushed once in a while
 
 # To-Do
-- Add a `requested by (user)` on the youtube embeds
 - Make new songs start a new embed other than updating the existing embed
 - Rewrite for optimization
 - Add support for spotify links
