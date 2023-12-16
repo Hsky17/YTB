@@ -4,6 +4,7 @@ from discord import app_commands
 from discord.ext import commands
 from discord.ui import Button, View
 from config import BOT_TOKEN
+from config import API_KEY
 import os
 import yt_dlp
 import requests
@@ -15,9 +16,11 @@ global voters
 voters = []
 global alreadyRan
 voice_client = None
+global userlist
+userlist = []
+global stoplist
+stoplist = []
 
-# This is your youtube api key for creating embeds, pretty big implemenentation of the bot but could be rewritten to not use it
-API_KEY = "API_KEY_HERE"
 
 async def music(interaction, query):
     global voice_client
@@ -43,9 +46,12 @@ async def music(interaction, query):
                 query = first_result['webpage_url']
                 song_title = first_result['title']
 
+        if interaction.user.id not in userlist:
+            userlist.append(interaction.user.id)
+            print("Added user to list")
         linklist.append(query)
         songlist.append(song_title)
-        print("Added link and song")
+        print("Added link, song, and user")
         await interaction.edit_original_response(content=f"Added `{song_title}` to queue")
     else:
 
@@ -130,6 +136,11 @@ async def music(interaction, query):
                     embed.set_thumbnail(url=thumbnail)
                     # Add a field for video duration
                     embed.add_field(name="Duration", value=convert_iso8601_duration(duration), inline=False)  # Set inline to False for vertical alignment
+                    # Fetching the user
+                    if interaction.user.id not in userlist:
+                        userlist.append(interaction.user.id)
+                        print("Added user to list")
+                    embed.add_field(name="Requested by:", value=f"<@{userlist[0]}>", inline=True)
                     print("Created embed")
                     
                     # Convert the downloaded audio to WebM format using FFmpeg
@@ -137,6 +148,8 @@ async def music(interaction, query):
                     voice_client.play(discord.FFmpegPCMAudio(audio_filename), after=lambda e: on_music_end(title, voice_client, interaction, e))
                     print("Playing music")
                     isplaying = True
+                    
+                    
                     
                     async def pause(interaction):
                         if voice_client is not None:
@@ -279,12 +292,29 @@ async def play(interaction: discord.Interaction, link: str):
 
 async def stop(interaction):
     if voice_client is not None:
-        voice_client.stop()
-        print("Stopped music")
-        del songlist[:]
-        del linklist[:]
-        await interaction.message.delete()
-        await voice_client.disconnect()
+        if interaction.user.id in stoplist:
+            await interaction.response.send_message("You already voted!")
+        if interaction.user.id not in userlist:
+            await interaction.response.send_message("You haven't requested anything :x:")
+        else:
+            if len(userlist) > 1:
+                userlist.remove(interaction.user.id)
+                stoplist.append(interaction.user.id)
+                await interaction.response.send_message(f"Voted to stop! {len(stoplist)}/{len(userlist)+len(stoplist)} votes, {len(userlist)} are needed...")
+            else:
+                del userlist[:]
+        if len(userlist) == 0:
+            voice_client.stop()
+            print("Stopped music")
+            await interaction.response.send_message(f"Stopping...")
+            del songlist[:]
+            del linklist[:]
+            del userlist[:]
+            del stoplist[:]
+            await interaction.message.delete()
+            await voice_client.disconnect()
+
+        
 
 
 
@@ -317,5 +347,5 @@ async def queue(interaction: discord.Interaction, option: str,suboption: str = "
 
 
 
-# Replace BOT_TOKEN with your bot token you get from https://discord.com/developers
-bot.run("BOT_TOKEN")
+
+bot.run(BOT_TOKEN)
