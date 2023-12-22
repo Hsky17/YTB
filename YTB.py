@@ -4,7 +4,6 @@ from discord import app_commands
 from discord.ext import commands
 from discord.ui import Button, View
 from config import BOT_TOKEN
-from config import API_KEY
 import os
 import yt_dlp
 import requests
@@ -20,18 +19,15 @@ global userlist
 userlist = []
 global stoplist
 stoplist = []
-
+callbacks = {}
+ranalready = False
 
 async def music(interaction, query):
+    global ranalready
     global voice_client
     # Gets the voice channel of the user 
     voice_state = interaction.user.voice
     print(f"Voice state is {voice_state}")
-
-    # Checks for annoying danny messages
-    if "pornhub" in query:
-        print("Found unfunny website")
-        await interaction.response.send_message('Your not funny exiting')
     
     if voice_client and voice_client.is_playing():
         print("Running song is play logic")
@@ -54,7 +50,6 @@ async def music(interaction, query):
         print("Added link, song, and user")
         await interaction.edit_original_response(content=f"Added `{song_title}` to queue")
     else:
-
         # As long as the user is in a channel and is connected?
         if voice_state is not None and voice_state.channel is not None:
             
@@ -90,26 +85,31 @@ async def music(interaction, query):
                         ydl.cache.remove()
                         if "youtube.com" in query: 
                             print(f"Link is: {query}, downloading...")
-                            try:
-                                await interaction.response.send_message('Downloading...')  # Send initial response
-                                alreadyRan = False
-                            except:
-                                await interaction.edit_original_response(content='Downloading...',embed=None)
-                                alreadyRan = True
+                            if ranalready == False:
+                                response_msg = await interaction.response.send_message('Downloading...')  # Send initial response
+                            else:
+                                sent_message = await interaction.channel.send(content='Downloading...')
                                 print("Send downloading message")
                             info = ydl.extract_info(query, download=True)
                             audio_filename = ydl.prepare_filename(info)
+                            song_title = info['title']
+                            thumbnail_url = info.get('thumbnails', [{}])[0].get('url', '')
+                            duration = info.get('duration', 0)
+                            
                         else:
-                            try:
-                                await interaction.response.send_message('Searching...')  # Send initial response
+                            if ranalready == False:
+                                response_msg = await interaction.response.send_message('Searching...')  # Send initial response
                                 alreadyRan = False
-                            except:
-                                await interaction.edit_original_response(content='Searching...',embed=None)
+                            else:
+                                await interaction.channel.send(content='Searching...')
                             search_results = ydl.extract_info(f"ytsearch:{query}", download=False)
                             first_result = search_results['entries'][0]
                             query = first_result['webpage_url']
                             info = ydl.extract_info(query, download=True)
                             audio_filename = ydl.prepare_filename(info)
+                            song_title = info['title']
+                            thumbnail_url = info.get('thumbnails', [{}])[0].get('url', '')
+                            duration = info.get('duration', 0)
                             print(f"Searched query is {query}")
 
 
@@ -120,22 +120,11 @@ async def music(interaction, query):
                         voice_client = await voice_channel.connect()
                         print("Connected to vc")
 
-                    # Youtube embed stuff
-                    video_id = query.split("v=")[1]
-                    response = requests.get(f"https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id={video_id}&key={API_KEY}")
-                    video_data = response.json()
-                    # print(f"Video data is: {video_data}")
-                    if "items" in video_data:
-                        video = video_data["items"][0] 
-                        title = video["snippet"]["title"]
-                        thumbnail = video["snippet"]["thumbnails"]["high"]["url"]
-                        duration = video["contentDetails"]["duration"]
-
                     # Create and send an embed message with video details
-                    embed = discord.Embed(title=title, color=discord.Color.blue())
-                    embed.set_thumbnail(url=thumbnail)
+                    embed = discord.Embed(title=song_title, url=query, color=discord.Color.blue())
+                    embed.set_thumbnail(url=thumbnail_url)
                     # Add a field for video duration
-                    embed.add_field(name="Duration", value=convert_iso8601_duration(duration), inline=False)  # Set inline to False for vertical alignment
+                    embed.add_field(name="Duration:", value=convertfromseconds(duration), inline=False)  # Set inline to False for vertical alignment
                     # Fetching the user
                     if interaction.user.id not in userlist:
                         userlist.append(interaction.user.id)
@@ -145,7 +134,7 @@ async def music(interaction, query):
                     
                     # Convert the downloaded audio to WebM format using FFmpeg
                     # Play the converted audio file using FFmpeg
-                    voice_client.play(discord.FFmpegPCMAudio(audio_filename), after=lambda e: on_music_end(title, voice_client, interaction, e))
+                    voice_client.play(discord.FFmpegPCMAudio(audio_filename), after=lambda e: on_music_end(song_title, voice_client, interaction, sent_message, e))
                     print("Playing music")
                     isplaying = True
                     
@@ -170,23 +159,53 @@ async def music(interaction, query):
                             await interaction.message.edit(view=view)
                             print("Resumed")
                     async def skip(interaction):
+                        await skiplogic(interaction)
+
+                    async def skiplogic(interaction):
                         if voice_client is not None:
                             if str(interaction.user) not in voters:
                                 voters.append(str(interaction.user))
-                                if len(voice_channel.members) > 3:
-                                    votesNeeded = len(voice_channel.members) // 2
-                                    if len(voters) >= votesNeeded:
-                                        print("Skipping")
-                                        del voters[:]
-                                        voice_client.stop()
-                                    else:
-                                        await interaction.response.send_message(f"Voted! You have {str(len(voters))}/{str(int(votesNeeded))} votes")
-                                else:
-                                    print("Skipping")
+                                if interaction.user.id == userlist[0]:
                                     del voters[:]
                                     voice_client.stop()
+                                    return
+                                if len(voice_channel.members) - 1 > 1:
+                                    votesNeeded = len(voice_channel.members) - 1 // 2
+                                    if len(voters) >= votesNeeded:
+                                        del voters[:]
+                                        voice_client.stop()
+                                        return
+                                    else:
+                                        await interaction.channel.send(f"Voted! You have {str(len(voters))}/{str(int(votesNeeded))} votes")
+                                else:
+                                    del voters[:]
+                                    voice_client.stop()
+                                    return
                             else:
-                                await interaction.response.send_message("You already voted :x:")
+                                await interaction.channel.send("You already voted :x:")
+
+                    async def stop(interaction):
+                        if voice_client is not None:
+                            if interaction.user.id in stoplist:
+                                await interaction.response.send_message("You already voted!")
+                            if interaction.user.id not in userlist:
+                                await interaction.response.send_message("You haven't requested anything :x:")
+                            else:
+                                if len(userlist) > 1:
+                                    userlist.remove(interaction.user.id)
+                                    stoplist.append(interaction.user.id)
+                                    await interaction.response.send_message(f"Voted to stop! {len(stoplist)}/{len(userlist)+len(stoplist)} votes, {len(userlist)} are needed...")
+                                else:
+                                    del userlist[:]
+                            if len(userlist) == 0:
+                                voice_client.stop()
+                                print("Stopped music")
+                                del songlist[:]
+                                del linklist[:]
+                                del userlist[:]
+                                del stoplist[:]
+                                await voice_client.disconnect()
+                                await interaction.message.delete()
             
                     pbutton = Button(label="Pause", style=discord.ButtonStyle.gray, emoji="⏸️")
                     sbutton = Button(label="Stop", style=discord.ButtonStyle.red, emoji="⏹️")
@@ -198,24 +217,34 @@ async def music(interaction, query):
                     view.add_item(pbutton)
                     view.add_item(sbutton)
                     view.add_item(skbutton)
-                    await interaction.edit_original_response(content="", embed=embed, view=view)
+                    if ranalready == False:
+                        await interaction.edit_original_response(content="", embed=embed, view=view)
+                        ranalready = True
+                        sent_message = await interaction.original_response()
+                    else:
+                        await sent_message.edit(content="", embed=embed, view=view)
+                    
                     print("Edited message to display embed")
         else:
             await interaction.response.send_message("Your not in a vc")
 
-def on_music_end(song_title, voice_client,interaction, error):
+def on_music_end(song_title, voice_client,interaction, sent_message, error):
+        global alreadyran
         print("made it to music end")
         print(f"Songlist: {songlist}")
         print(f"Songtitle: {song_title}")
+        asyncio.run_coroutine_threadsafe(sent_message.delete(),voice_client.loop)
         if error:
             print(f"Error during playback: {error}")
         if len(linklist) == 0:
             print("Queue is empty, disconnecting")
             voice_client.stop()
+            alreadyran = False
             asyncio.run_coroutine_threadsafe(voice_client.disconnect(),voice_client.loop)
         elif song_title == songlist[0]:
             del linklist[0]
             del songlist[0]
+            del userlist[0]
             print(f"Deleted {song_title} from the list")
             if len(songlist) != 0:
                 print("Still a song in queue, playing new song")
@@ -223,6 +252,7 @@ def on_music_end(song_title, voice_client,interaction, error):
             else:
                 print("Queue is empty, disconnecting")
                 voice_client.stop()
+                alreadyran = False
                 asyncio.run_coroutine_threadsafe(voice_client.disconnect(),voice_client.loop)
         else:
             print("Song still in queue")
@@ -232,33 +262,32 @@ def on_music_end(song_title, voice_client,interaction, error):
 
 
 
-def convert_iso8601_duration(duration):
-    # Remove the leading 'PT' from the duration string
-    duration = duration[2:]
-    print(f"Duration is {duration}")
-    # Initialize variables for minutes and seconds
-    minutes = 0
-    seconds = 0
-    hours = 0
-
-    # Extract hours if present
-    if 'H' in duration:
-        hours_str = duration.split('H')[0]
-        hours = int(hours_str)
-        duration = duration[len(hours_str) + 1:] # Remove the extracted hours part
-
-    # Extract minutes if present
-    if 'M' in duration:
-        minutes_str = duration.split('M')[0]
-        minutes = int(minutes_str)
-        duration = duration[len(minutes_str) + 1:]  # Remove the extracted minutes part
+def convertfromseconds(duration):
+    inthours = 0
+    intminutes = 0
+    intseconds = 0
+    hours = ""
+    minutes = ""
+    seconds = ""
+    if duration // 3600 >= 1:
+        inthours = duration // 3600
+        hours = f"{inthours} hours, " 
     
-    # Extract seconds if present
-    if 'S' in duration:
-        seconds_str = duration.split('S')[0]
-        seconds = int(seconds_str)
+    if inthours != 0 and (duration - (inthours * 3600)) // 60 >= 1:
+        intminutes = (duration - (inthours * 3600)) // 60
+        minutes = f"{intminutes} minutes, "
+    elif duration // 60 >= 1:
+        intminutes = duration // 60
+        minutes = f"{intminutes} minutes, "
     
-    return f"{hours} hour(s), {minutes} minutes, and {seconds} seconds"
+    if intminutes != 0 and duration - (intminutes * 60) >= 1:
+        intseconds = duration - (intminutes * 60)
+        seconds = f"{intseconds} seconds."
+    else:
+        intseconds = duration
+        seconds = f"{intseconds} seconds."
+
+    return hours + minutes + seconds
 
 # Bot startup command
 bot = commands.Bot(command_prefix="!", intents = discord.Intents.all())
@@ -290,29 +319,8 @@ async def on_ready():
 async def play(interaction: discord.Interaction, link: str):
     await music(interaction,link)
 
-async def stop(interaction):
-    if voice_client is not None:
-        if interaction.user.id in stoplist:
-            await interaction.response.send_message("You already voted!")
-        if interaction.user.id not in userlist:
-            await interaction.response.send_message("You haven't requested anything :x:")
-        else:
-            if len(userlist) > 1:
-                userlist.remove(interaction.user.id)
-                stoplist.append(interaction.user.id)
-                await interaction.response.send_message(f"Voted to stop! {len(stoplist)}/{len(userlist)+len(stoplist)} votes, {len(userlist)} are needed...")
-            else:
-                del userlist[:]
-        if len(userlist) == 0:
-            voice_client.stop()
-            print("Stopped music")
-            await interaction.response.send_message(f"Stopping...")
-            del songlist[:]
-            del linklist[:]
-            del userlist[:]
-            del stoplist[:]
-            await interaction.message.delete()
-            await voice_client.disconnect()
+
+            
 
         
 
@@ -332,6 +340,7 @@ async def queue(interaction: discord.Interaction, option: str,suboption: str = "
             title = songlist[position]
             del linklist[position]
             del songlist[position]
+            del userlist[position]
             await interaction.response.send_message("Removed: " + title)
         
     
