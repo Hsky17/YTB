@@ -10,7 +10,7 @@ This was made just for fun and for learning discord.py, code is unoptimized and 
 - Add error handling
 
 # Credits
-[yt-dlp](https://github.com/yt-dlp/yt-dlp) for downloading and searching youtube videos
+[yt-dlp](https://github.com/yt-dlp/yt-dlp) for downloading, searching, and gathering metadata for youtube videos
 
 [ffmpeg](https://github.com/FFmpeg/FFmpeg) for playing audio and streaming 
 
