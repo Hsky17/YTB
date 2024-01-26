@@ -9,6 +9,11 @@ This was made just for fun and for learning discord.py, code is unoptimized and 
 - Add support for spotify links
 - Add error handling
 
+# Known bugs
+- User mention is broken and doesn't clear after each songs and other conditions
+- Message interactions dont reset, causing embeds not to show
+   - This means no controls get showed
+
 # Credits
 [yt-dlp](https://github.com/yt-dlp/yt-dlp) for downloading, searching, and gathering metadata for youtube videos
 
