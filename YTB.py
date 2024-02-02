@@ -13,6 +13,7 @@ voice_client = None
 userlist = []
 stoplist = []
 callbacks = {}
+ranalready = False
 
 
 async def music(interaction, query):
@@ -231,7 +232,7 @@ async def music(interaction, query):
                                 # If the # of people in the channel minus the bot is more than one
                                 if len(voice_channel.members) - 1 > 1:
                                     # The number of votes needed is half the members in the vc
-                                    votesNeeded = len(voice_channel.members) - 1 // 2
+                                    votesNeeded = (len(voice_channel.members) - 1) // 2
                                     # If there are enough votes to skip
                                     if len(voters) >= votesNeeded:
                                         # Delete all voters from the list
