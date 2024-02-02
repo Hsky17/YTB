@@ -12,6 +12,9 @@ This was made just for fun and for learning discord.py, code is unoptimized and 
 # Known bugs
 - Duration will show incorrect times
 
+# Installation
+There is a wiki page on installing and running the bot [here](https://github.com/Hsky17/YTB/wiki/Installation)
+
 # Credits
 [yt-dlp](https://github.com/yt-dlp/yt-dlp) for downloading, searching, and gathering metadata for youtube videos
 
