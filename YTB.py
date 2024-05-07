@@ -1,5 +1,5 @@
 import discord
-import asyncio
+import asyncio, subprocess
 from discord import app_commands
 from discord.ext import commands
 from discord.ui import Button, View
@@ -14,9 +14,10 @@ userlist = []
 stoplist = []
 callbacks = {}
 ranalready = False
+idlemusic = []
 
 
-async def music(interaction, query):
+async def music(interaction, query, timestamp):
     # This function is very unoptimized and am planning on optimizing it some other time
     # Some examples of this is when I get data on the video, it is called at least 4 times in this function and could be only called once, getting all the needed info, then running the logic with that info.
     # Processes that need to be repeated can also be put into separate functions and called upon
@@ -25,11 +26,13 @@ async def music(interaction, query):
     global ranalready
     global song_title
     global songlist
+    global idlemusic
+    global idleMusicPlaying
     # Gets the voice channel of the user 
     voice_state = interaction.user.voice
     print(f"Voice state is {voice_state}")
     # If the bot is in a channel and is playing in the channel
-    if voice_client and voice_client.is_playing():
+    if voice_client and voice_client.is_playing() and idleMusicPlaying == False:
         print("Running song is playing logic")
         # Give message to the channel, saying that its adding a song to the queue
         await interaction.response.send_message("Song is already playing, adding to queue")
@@ -162,12 +165,25 @@ async def music(interaction, query):
                     if interaction.guild.voice_client is None:
                         voice_client = await voice_channel.connect()
                         print("Connected to vc")
-
+                    if "hour(s)" in convertfromseconds(duration,"") or convertfromseconds(duration, "raw")[1] > 15:
+                        print("Adding to secondary queue")
+                        idlemusic.append(audio_filename)
+                        if voice_client.is_playing():
+                            idleMusicPlaying = False
+                        else:
+                            idleMusicPlaying = True
+                    elif idleMusicPlaying == True:
+                        idleMusicPlaying = False
+                        print("Pausing idle music")
+                        print(f"Idle music: {idlemusic}")
+                        splitAudio(idlemusic[0])
+                        idlemusic[0] = str(idlemusic[0].replace(".webm","(split).webm"))
+                        voice_client.stop()
                     # Create and send an embed message with video details
                     embed = discord.Embed(title=song_title, url=query, color=discord.Color.blue())
                     embed.set_thumbnail(url=thumbnail_url)
                     # Add a field for video duration
-                    embed.add_field(name="Duration:", value=convertfromseconds(duration), inline=False)  # Set inline to False for vertical alignment
+                    embed.add_field(name="Duration:", value=convertfromseconds(duration,""), inline=False)  # Set inline to False for vertical alignment
                     # Fetching the user
                     userlist.append(interaction.user.id)
                     print("Added user to list")
@@ -177,6 +193,10 @@ async def music(interaction, query):
                     # Convert the downloaded audio to WebM format using FFmpeg
                     # Play the converted audio file using FFmpeg
                     # When the audio stops, it triggers on_music_end which has post music logic
+                    if idleMusicPlaying == True and voice_client.is_playing() == False:
+                        if len(idlemusic) > 0:
+                            audio_filename = idlemusic[0]
+                            del idlemusic[0]
                     voice_client.play(discord.FFmpegPCMAudio(audio_filename), after=lambda e: on_music_end(song_title, voice_client, interaction, sent_message, e))
                     print("Playing music")
                     
@@ -255,32 +275,33 @@ async def music(interaction, query):
                                 await interaction.channel.send("You already voted :x:")
 
                     async def stop(interaction):
+                        print("Stop logic started")
                         # As long as the user is in a vc
                         if voice_client is not None:
                             # If the user already voted to stop
                             if interaction.user.id in stoplist:
                                 await interaction.response.send_message("You already voted!")
-                            # Getting the number of times a user is in the list
-                            while interaction.user.id in userlist: 
-                                numUserInQueue =+ 1
-                            # If the user isn't in queue
-                            if numUserInQueue == 0:
-                                await interaction.response.send_message("You haven't requested anything :x:")
-                            # If the userlist is more than one and there is at least one more person that has requested a song
-                            elif len(userlist) > 1 and len(userlist) > numUserInQueue:
-                                # Remove the user from the userlist
-                                while interaction.user.id in userlist:
+                            else: 
+                                # Getting the number of times a user is in the list
+                                numUserInQueue = userlist.count(interaction.user.id)
+                                # If the user isn't in queue
+                                if numUserInQueue == 0:
+                                    await interaction.response.send_message("You haven't requested anything :x:")
+                                # If the userlist is more than one and there is at least one more person that has requested a song
+                                elif len(userlist) > 1 and len(userlist) > numUserInQueue:
+                                    # Remove the user from the userlist
                                     userlist.remove(interaction.user.id)
-                                # Then add the user to the stoplist
-                                stoplist.append(interaction.user.id)
-                                await interaction.response.send_message(f"Voted to stop! {len(stoplist)}/{len(userlist)+len(stoplist)} votes, {len(userlist)} are needed...")
-                            # If nobody is playing anything or the number of votes is passed
-                            if userlist[0] == interaction.user.id:
-                                # Delete the message
-                                await interaction.message.delete()
-                                # Stop all audio
-                                voice_client.stop()
-                                print("Stopped music")
+                                    # Then add the user to the stoplist
+                                    stoplist.append(interaction.user.id)
+                                    await interaction.response.send_message(f"Voted to stop! {len(stoplist)}/{len(userlist)+len(stoplist)} votes, {len(userlist)} are needed...")
+                                # If nobody is playing anything or the number of votes is passed
+                                if userlist[0] == interaction.user.id:
+                                    # Delete the message
+                                    await interaction.message.delete()
+                                    idleMusicTimestamp = voice_client.source.duration
+                                    # Stop all audio
+                                    voice_client.stop()
+                                    print("Stopped music")
                     # Make pause, stop, and skip buttons
                     pbutton = Button(label="Pause", style=discord.ButtonStyle.gray, emoji="⏸️")
                     sbutton = Button(label="Stop", style=discord.ButtonStyle.red, emoji="⏹️")
@@ -363,31 +384,46 @@ def on_music_end(song_title, voice_client,interaction, sent_message, error):
             # Play music function with the link as the query
             asyncio.run_coroutine_threadsafe(music(interaction,linklist[0]),voice_client.loop)
 
-def convertfromseconds(duration):
+def splitAudio(filename):
+    command = ["ffmpeg", "-ss", "00:01:30", "-i", str(filename), "-vn", "-acodec", "copy", str(filename.replace(".webm","(split).webm"))]
+
+    # Run the command and check for errors
+    process = subprocess.run(command, capture_output=True)
+
+    if process.returncode != 0:
+        print(f"Error running ffmpeg: {process.stderr.decode()}")
+    else:
+        print("ffmpeg completed successfully!")
+
+
+def convertfromseconds(duration,option):
     inthours = 0
     intminutes = 0
-    intseconds = 0
     hours = ""
     minutes = ""
     seconds = ""
+    # Find out how many hours are in the duration
     if duration // 3600 >= 1:
         inthours = duration // 3600
-        hours = f"{inthours} hours, " 
-    
-    if inthours != 0 and (duration - (inthours * 3600)) // 60 >= 1:
-        intminutes = (duration - (inthours * 3600)) // 60
-        minutes = f"{intminutes} minutes, "
-    elif duration // 60 >= 1:
-        intminutes = duration // 60
-        minutes = f"{intminutes} minutes, "
-    
-    if intminutes != 0 and duration - (intminutes * 60) >= 1:
-        intseconds = duration - (intminutes * 60)
-        seconds = f"{intseconds} seconds."
-    else:
-        intseconds = duration
-        seconds = f"{intseconds} seconds."
+        hours = f"{inthours} hour(s), " 
+    # If there is none then it will pass, else it will record the ammount
+    # Then it will find out how many minutes there are in the duration minus the hours
+    remainingSeconds = (duration - (inthours * 3600)) // 60 
 
+    # If there is at least one minute in the duration
+    if remainingSeconds >= 60:
+        intminutes = remainingSeconds // 60
+        minutes = f"{intminutes} minute(s), "
+    
+    # Else it will take the remaining seconds left over after taking the hours and minutes out of the duration
+    remainingSeconds = duration - ((inthours * 3600) + (intminutes * 60))
+    if remainingSeconds > 0:
+        seconds = f"{remainingSeconds} second(s), "
+
+    if option == "raw":
+        timelist = [inthours, intminutes]
+        return timelist
+    # Return the string back to the function call
     return hours + minutes + seconds
 
 # Bot startup command
@@ -405,8 +441,9 @@ async def on_ready():
 
 @bot.tree.command(name="play", description="Play a song!")
 @app_commands.describe(link = "Link or search term of the youtube video")
-async def play(interaction: discord.Interaction, link: str):
-    await music(interaction,link)
+@app_commands.describe(timestamp = "Play your music at a specific timestamp")
+async def play(interaction: discord.Interaction, link: str, timestamp: str = ""):
+    await music(interaction,link, timestamp)
 
 @bot.tree.command(name="queue", description="Command for managing the queue")
 @app_commands.describe(option = "Remove, List")
