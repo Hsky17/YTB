@@ -7,9 +7,11 @@ This was made just for fun and for learning discord.py, code is unoptimized and 
 # To-Do
 - Add support for spotify links
 - Add error handling (Partially)
+- Add idle music logic
+- - If a song is longer than 20 minutes long, it will play when no other song is playing. But when a song gets requested, it will take priority and pause the idle music.
 
 # Known bugs
-- Duration will show incorrect times
+- Users not being assigned correctly
 
 # Installation
 There is a wiki page on installing and running the bot [here](https://github.com/Hsky17/YTB/wiki/Installation)
