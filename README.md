@@ -5,7 +5,7 @@ Simple yet feature rich youtube bot implementation for discord
 This was made just for fun and for learning discord.py, code is unoptimized and unorganized at the moment as it was AI assisted and left as functional. Optimizations and fixes will come in the future but will only be pushed once in a while
 
 # To-Do
-- Rewrite for optimization
+- Rewrite for optimization ([In Progress](https://github.com/Hsky17/YTB/tree/rewrite))
 - Add support for spotify links
 - Add error handling
 
